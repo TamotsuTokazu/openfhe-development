@@ -619,6 +619,43 @@ private:
     static std::map<usint, usint> m_nttDivisionDim;
 };
 
+template <typename VecType>
+class RaderFFTNat {
+    using IntType = typename VecType::Integer;
+
+public:
+
+    static std::map<usint, std::vector<usint>> m_bitReverseTableBase2n3;
+    static std::map<ModulusRoot<IntType>, VecType> m_base2n3RootTableByModulusRoot;
+    static std::map<ModulusRoot<IntType>, VecType> m_base2n3RootPreconTableByModulusRoot;
+    static std::map<usint, std::array<usint, 4>> m_Base2n3Info;
+
+    static std::map<usint, VecType> m_tempVecRader;
+
+    static std::map<usint, std::vector<usint>> m_forwardPermutation;
+    static std::map<usint, std::vector<usint>> m_inversePermutation;
+
+    static std::map<ModulusRoot<IntType>, VecType> m_rootTableByModulusRoot;
+    static std::map<ModulusRoot<IntType>, VecType> m_rootPreconTableByModulusRoot;
+
+    static std::map<ModulusRoot<IntType>, VecType> m_inverseRootTableByModulusRoot;
+    static std::map<ModulusRoot<IntType>, VecType> m_inverseRootPreconTableByModulusRoot;
+
+    void PreComputeIsomorphism(usint cycloOrder);
+
+    void PreComputeRootTable(usint cycloOrder, const ModulusRoot<IntType>& nttModulusRoot);
+
+    void PreComputeBitReverseTableBase2n3(usint cycloOrder);
+
+    void PreComputeBase2n3RootTable(usint cycloOrder, const ModulusRoot<IntType>& nttModulusRoot);
+
+    void ForwardFFTBase2n3(const VecType& element, const IntType& rootOfUnity, VecType* result);
+
+    void ForwardRader(const VecType& element, const IntType& rootOfUnity, VecType* result);
+
+    void InverseRader(const VecType& element, const IntType& rootOfUnity, VecType* result);
+};
+
 }  // namespace intnat
 
 // class implementations
