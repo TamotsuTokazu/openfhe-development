@@ -1448,9 +1448,6 @@ template <typename VecType>
 std::map<usint, std::array<usint, 4>> RaderFFTNat<VecType>::m_Base2n3Info;
 
 template <typename VecType>
-std::map<usint, VecType> RaderFFTNat<VecType>::m_tempVecRader;
-
-template <typename VecType>
 std::map<usint, std::vector<usint>> RaderFFTNat<VecType>::m_forwardPermutation;
 
 template <typename VecType>
@@ -1644,7 +1641,7 @@ void RaderFFTNat<VecType>::ForwardFFTBase2n3(const VecType& element, const IntTy
 }
 
 template <typename VecType>
-void RaderFFTNat<VecType>::ForwardRader(const VecType& element, const IntType& rootOfUnity, VecType* result) {
+VecType RaderFFTNat<VecType>::ForwardRader(const VecType& element, const IntType& rootOfUnity) {
     usint tot = element.GetLength();
     if (result->GetLength() != tot) {
         OPENFHE_THROW(lbcrypto::math_error, "size of input element and size of output element not of same size");
@@ -1661,16 +1658,12 @@ void RaderFFTNat<VecType>::ForwardRader(const VecType& element, const IntType& r
         PreComputeRootTable(order, {modulus, rootOfUnity});
     }
 
-    if (m_tempVecRader.find(order) == m_tempVecRader.end()) {
-        m_tempVecRader[order] = VecType(tot, modulus);
-    }
-
     const auto &indices = m_inversePermutation[order];
     const auto &rootsT = m_rootTableByModulusRoot[{modulus, rootOfUnity}];
     const auto &rootsTPrecon = m_rootPreconTableByModulusRoot[{modulus, rootOfUnity}];
 
-    auto &temp = m_tempVecRader[order];
-    auto &out = *result;
+    auto temp = VecType(tot, modulus);
+    auto out = VecType(tot, modulus);
 
     if (element[0] == 0) {
         temp[0] = 0;
@@ -1694,10 +1687,11 @@ void RaderFFTNat<VecType>::ForwardRader(const VecType& element, const IntType& r
     }
 
     ForwardFFTBase2n3(temp, rootOfUnityTot.ModExp(tot - 1, modulus), &out);
+    return out;
 }
 
 template <typename VecType>
-void RaderFFTNat<VecType>::InverseRader(const VecType& element, const IntType& rootOfUnity, VecType* result) {
+VecType RaderFFTNat<VecType>::InverseRader(const VecType& element, const IntType& rootOfUnity) {
     usint tot = element.GetLength();
     if (result->GetLength() != tot) {
         OPENFHE_THROW(lbcrypto::math_error, "size of input element and size of output element not of same size");
@@ -1714,16 +1708,12 @@ void RaderFFTNat<VecType>::InverseRader(const VecType& element, const IntType& r
         PreComputeRootTable(order, {modulus, rootOfUnity});
     }
 
-    if (m_tempVecRader.find(order) == m_tempVecRader.end()) {
-        m_tempVecRader[order] = VecType(tot, modulus);
-    }
-
     const auto &indices = m_inversePermutation[order];
     const auto &invRootsT = m_inverseRootTableByModulusRoot[{modulus, rootOfUnity}];
     const auto &invRootsTPrecon = m_inverseRootPreconTableByModulusRoot[{modulus, rootOfUnity}];
 
-    auto &temp = m_tempVecRader[order];
-    auto &out = *result;
+    auto temp = VecType(tot, modulus);
+    auto out = VecType(tot, modulus);
 
     auto rootOfUnityTot = rootOfUnity.ModExp(order, modulus);
 
@@ -1747,6 +1737,8 @@ void RaderFFTNat<VecType>::InverseRader(const VecType& element, const IntType& r
     for (usint i = 1; i < tot; i++) {
         out[i] = out[0].ModAddFast(out[i], modulus);
     }
+
+    return out;
 }
 
 }  // namespace intnat

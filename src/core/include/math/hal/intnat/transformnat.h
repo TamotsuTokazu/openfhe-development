@@ -630,8 +630,6 @@ public:
     static std::map<ModulusRoot<IntType>, VecType> m_base2n3RootPreconTableByModulusRoot;
     static std::map<usint, std::array<usint, 4>> m_Base2n3Info;
 
-    static std::map<usint, VecType> m_tempVecRader;
-
     static std::map<usint, std::vector<usint>> m_forwardPermutation;
     static std::map<usint, std::vector<usint>> m_inversePermutation;
 
@@ -651,9 +649,9 @@ public:
 
     void ForwardFFTBase2n3(const VecType& element, const IntType& rootOfUnity, VecType* result);
 
-    void ForwardRader(const VecType& element, const IntType& rootOfUnity, VecType* result);
+    VecType ForwardRader(const VecType& element, const IntType& rootOfUnity);
 
-    void InverseRader(const VecType& element, const IntType& rootOfUnity, VecType* result);
+    VecType InverseRader(const VecType& element, const IntType& rootOfUnity);
 };
 
 }  // namespace intnat
