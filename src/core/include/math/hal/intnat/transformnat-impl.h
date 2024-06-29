@@ -1171,77 +1171,28 @@ template <typename VecType>
 VecType ChineseRemainderTransformArbNat<VecType>::ForwardTransform(const VecType& element, const IntType& root,
                                                                    const IntType& nttModulus, const IntType& nttRoot,
                                                                    const usint cycloOrder) {
-    usint phim = GetTotient(cycloOrder);
-    if (element.GetLength() != phim) {
-        OPENFHE_THROW("element size should be equal to phim");
-    }
+    // usint phim = GetTotient(cycloOrder);
+    // if (element.GetLength() != phim) {
+    //     OPENFHE_THROW("element size should be equal to phim");
+    // }
 
-    const auto& modulus                    = element.GetModulus();
-    const ModulusRoot<IntType> modulusRoot = {modulus, root};
+    // if (phim + 1 != cycloOrder) {
+    //     OPENFHE_THROW("cycloOrder is not prime");
+    // }
 
-    const ModulusRoot<IntType> nttModulusRoot      = {nttModulus, nttRoot};
-    const ModulusRootPair<IntType> modulusRootPair = {modulusRoot, nttModulusRoot};
-
-#pragma omp critical
-    {
-        if (BluesteinFFTNat<VecType>::m_rootOfUnityTableByModulusRoot[nttModulusRoot].GetLength() == 0) {
-            BluesteinFFTNat<VecType>().PreComputeRootTableForNTT(cycloOrder, nttModulusRoot);
-        }
-
-        if (BluesteinFFTNat<VecType>::m_powersTableByModulusRoot[modulusRoot].GetLength() == 0) {
-            BluesteinFFTNat<VecType>().PreComputePowers(cycloOrder, modulusRoot);
-        }
-
-        if (BluesteinFFTNat<VecType>::m_RBTableByModulusRootPair[modulusRootPair].GetLength() == 0) {
-            BluesteinFFTNat<VecType>().PreComputeRBTable(cycloOrder, modulusRootPair);
-        }
-    }
-
-    VecType inputToBluestein = Pad(element, cycloOrder, true);
-    auto outputBluestein =
-        BluesteinFFTNat<VecType>().ForwardTransform(inputToBluestein, root, cycloOrder, nttModulusRoot);
-    VecType output = Drop(outputBluestein, cycloOrder, true, nttModulus, nttRoot);
-
-    return output;
+    return RaderFFTNat<VecType>().ForwardRader(element, root);
 }
 
 template <typename VecType>
 VecType ChineseRemainderTransformArbNat<VecType>::InverseTransform(const VecType& element, const IntType& root,
                                                                    const IntType& nttModulus, const IntType& nttRoot,
                                                                    const usint cycloOrder) {
-    usint phim = GetTotient(cycloOrder);
-    if (element.GetLength() != phim) {
-        OPENFHE_THROW("element size should be equal to phim");
-    }
+    // usint phim = GetTotient(cycloOrder);
+    // if (element.GetLength() != phim) {
+    //     OPENFHE_THROW("element size should be equal to phim");
+    // }
 
-    const auto& modulus = element.GetModulus();
-    auto rootInverse(root.ModInverse(modulus));
-    const ModulusRoot<IntType> modulusRootInverse = {modulus, rootInverse};
-
-    const ModulusRoot<IntType> nttModulusRoot      = {nttModulus, nttRoot};
-    const ModulusRootPair<IntType> modulusRootPair = {modulusRootInverse, nttModulusRoot};
-
-#pragma omp critical
-    {
-        if (BluesteinFFTNat<VecType>::m_rootOfUnityTableByModulusRoot[nttModulusRoot].GetLength() == 0) {
-            BluesteinFFTNat<VecType>().PreComputeRootTableForNTT(cycloOrder, nttModulusRoot);
-        }
-
-        if (BluesteinFFTNat<VecType>::m_powersTableByModulusRoot[modulusRootInverse].GetLength() == 0) {
-            BluesteinFFTNat<VecType>().PreComputePowers(cycloOrder, modulusRootInverse);
-        }
-
-        if (BluesteinFFTNat<VecType>::m_RBTableByModulusRootPair[modulusRootPair].GetLength() == 0) {
-            BluesteinFFTNat<VecType>().PreComputeRBTable(cycloOrder, modulusRootPair);
-        }
-    }
-    VecType inputToBluestein = Pad(element, cycloOrder, false);
-    auto outputBluestein =
-        BluesteinFFTNat<VecType>().ForwardTransform(inputToBluestein, rootInverse, cycloOrder, nttModulusRoot);
-    auto cyclotomicInverse((IntType(cycloOrder)).ModInverse(modulus));
-    outputBluestein = outputBluestein * cyclotomicInverse;
-    VecType output  = Drop(outputBluestein, cycloOrder, false, nttModulus, nttRoot);
-    return output;
+    return RaderFFTNat<VecType>().InverseRader(element, root);
 }
 
 #endif
@@ -1555,6 +1506,8 @@ void RaderFFTNat<VecType>::PreComputeBitReverseTableBase2n3(usint order) {
 
 template <typename VecType>
 void RaderFFTNat<VecType>::PreComputeBase2n3RootTable(usint order, const ModulusRoot<IntType>& nttModulusRoot) {
+    std::cerr << order << std::endl;
+
     auto rootOfUnity = nttModulusRoot.second;
     typename VecType::Integer z = 1;
 
@@ -1643,9 +1596,6 @@ void RaderFFTNat<VecType>::ForwardFFTBase2n3(const VecType& element, const IntTy
 template <typename VecType>
 VecType RaderFFTNat<VecType>::ForwardRader(const VecType& element, const IntType& rootOfUnity) {
     usint tot = element.GetLength();
-    if (result->GetLength() != tot) {
-        OPENFHE_THROW(lbcrypto::math_error, "size of input element and size of output element not of same size");
-    }
 
     auto modulus = element.GetModulus();
     auto order = tot + 1;
@@ -1693,9 +1643,6 @@ VecType RaderFFTNat<VecType>::ForwardRader(const VecType& element, const IntType
 template <typename VecType>
 VecType RaderFFTNat<VecType>::InverseRader(const VecType& element, const IntType& rootOfUnity) {
     usint tot = element.GetLength();
-    if (result->GetLength() != tot) {
-        OPENFHE_THROW(lbcrypto::math_error, "size of input element and size of output element not of same size");
-    }
 
     auto modulus = element.GetModulus();
     auto order = tot + 1;
