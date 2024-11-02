@@ -1244,8 +1244,8 @@ VecType ChineseRemainderTransformArbDyn<VecType>::Drop(const VecType& element, c
             }
 
             // cycloOrder is arbitrary
-            // auto output = PolyMod(element, this->m_cyclotomicPolyMap[modulus],
-            // modulus);
+            auto output = PolyMod(element, this->m_cyclotomicPolyMap[modulus], modulus);
+            return output;
 
             const auto& nttMod    = m_DivisionNTTModulus[modulus];
             const auto& rootTable = m_rootOfUnityDivisionTableByModulus[nttMod];
