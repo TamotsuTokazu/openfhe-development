@@ -42,6 +42,7 @@
 #include "math/hal/intnat/transformnat.h"
 #include "math/nbtheory.h"
 #include "math/hal/intnat/primecycnat.h"
+#include "math/hal/intnat/tensornat.h"
 
 #include "utils/exception.h"
 #include "utils/inttypes.h"
@@ -1104,6 +1105,10 @@ VecType ChineseRemainderTransformArbNat<VecType>::ForwardTransform(const VecType
         return primecyc::RaderFFTNat<VecType>().ForwardRader(element, root);
     }
 
+    if (primecyc::TensorFFTNat<VecType>::m_factor.find(cycloOrder) != primecyc::TensorFFTNat<VecType>::m_factor.end()) {
+        return primecyc::TensorFFTNat<VecType>().ForwardTransform(element, root, cycloOrder);
+    }
+
 #pragma omp critical
     {
         if (BluesteinFFTNat<VecType>::m_rootOfUnityTableByModulusRoot[nttModulusRoot].GetLength() == 0) {
@@ -1145,6 +1150,10 @@ VecType ChineseRemainderTransformArbNat<VecType>::InverseTransform(const VecType
 
     if (primecyc::RaderFFTNat<VecType>::m_enabled[cycloOrder]) {
         return primecyc::RaderFFTNat<VecType>().InverseRader(element, root);
+    }
+
+    if (primecyc::TensorFFTNat<VecType>::m_factor.find(cycloOrder) != primecyc::TensorFFTNat<VecType>::m_factor.end()) {
+        return primecyc::TensorFFTNat<VecType>().InverseTransform(element, root, cycloOrder);
     }
 
 #pragma omp critical

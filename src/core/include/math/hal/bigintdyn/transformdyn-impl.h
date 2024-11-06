@@ -847,8 +847,8 @@ void BluesteinFFTDyn<VecType>::PreComputePowers(usint cycloOrder, const ModulusR
     VecType powers(cycloOrder, modulus);
     powers[0] = 1;
     for (usint i = 1; i < cycloOrder; i++) {
-        auto iSqr = (i * i) % (2 * cycloOrder);
-        auto val  = root.ModExp(IntType(iSqr), modulus);
+        IntType iSqr = IntType(i).ModMul(i, 2 * cycloOrder);
+        auto val  = root.ModExp(iSqr, modulus);
         powers[i] = val;
     }
     m_powersTableByModulusRoot[modulusRoot] = powers;
@@ -871,8 +871,8 @@ void BluesteinFFTDyn<VecType>::PreComputeRBTable(usint cycloOrder, const Modulus
     VecType b(2 * cycloOrder - 1, modulus);
     b[cycloOrder - 1] = 1;
     for (usint i = 1; i < cycloOrder; i++) {
-        auto iSqr             = (i * i) % (2 * cycloOrder);
-        auto val              = rootInv.ModExp(IntType(iSqr), modulus);
+        IntType iSqr = IntType(i).ModMul(i, 2 * cycloOrder);
+        auto val              = rootInv.ModExp(iSqr, modulus);
         b[cycloOrder - 1 + i] = val;
         b[cycloOrder - 1 - i] = val;
     }
@@ -1237,52 +1237,110 @@ VecType ChineseRemainderTransformArbDyn<VecType>::Drop(const VecType& element, c
             }
         }
         else {
-            // precompute root of unity tables for division NTT
-            if ((m_rootOfUnityDivisionTableByModulus[bigMod].GetLength() == 0) ||
-                (m_DivisionNTTModulus[modulus] != bigMod)) {
-                SetPreComputedNTTDivisionModulus(cycloOrder, modulus, bigMod, bigRoot);
-            }
+            std::set<IntType> factors;
+            PrimeFactorize<IntType>(cycloOrder, factors);
+            if (factors.size() == 2) {
+                // cycloOrder is a product of two primes
 
-            // cycloOrder is arbitrary
-            auto output = PolyMod(element, this->m_cyclotomicPolyMap[modulus], modulus);
-            return output;
+                auto p = factors.begin()->ConvertToInt();
+                auto q = (++factors.begin())->ConvertToInt();
 
-            const auto& nttMod    = m_DivisionNTTModulus[modulus];
-            const auto& rootTable = m_rootOfUnityDivisionTableByModulus[nttMod];
-            VecType aPadded2(m_nttDivisionDim[cycloOrder], nttMod);
-            // perform mod operation
-            usint power = cycloOrder - n;
-            for (usint i = n; i < element.GetLength(); i++) {
-                aPadded2[power - (i - n) - 1] = element[i];
-            }
-            VecType A(m_nttDivisionDim[cycloOrder]);
-            NumberTheoreticTransformDyn<VecType>().ForwardTransformIterative(aPadded2, rootTable, &A);
-            auto AB                      = A * m_cyclotomicPolyReverseNTTMap[modulus];
-            const auto& rootTableInverse = m_rootOfUnityDivisionInverseTableByModulus[nttMod];
-            VecType a(m_nttDivisionDim[cycloOrder]);
-            NumberTheoreticTransformDyn<VecType>().InverseTransformIterative(AB, rootTableInverse, &a);
+                if (p > q) {
+                    std::swap(p, q);
+                }
 
-            VecType quotient(m_nttDivisionDim[cycloOrder], modulus);
-            for (usint i = 0; i < power; i++) {
-                quotient[i] = a[i];
-            }
-            quotient.ModEq(modulus);
-            quotient.SetModulus(nttMod);
+                auto l = element.GetLength();
 
-            VecType newQuotient(m_nttDivisionDim[cycloOrder]);
-            NumberTheoreticTransformDyn<VecType>().ForwardTransformIterative(quotient, rootTable, &newQuotient);
-            newQuotient *= m_cyclotomicPolyNTTMap[modulus];
+                VecType a(l + p + q, modulus);
+                for (usint i = 0; i < l; i++) {
+                    a[i] = element[i];
+                }
 
-            VecType newQuotient2(m_nttDivisionDim[cycloOrder]);
-            NumberTheoreticTransformDyn<VecType>().InverseTransformIterative(newQuotient, rootTableInverse,
-                                                                             &newQuotient2);
-            newQuotient2.SetModulus(modulus);
-            newQuotient2.ModEq(modulus);
+                for (usint i = a.GetLength() - 1; i >= p; i--) {
+                    a[i].ModAddEq(a[i - p], modulus);
+                    a[i - p] = IntType(0).ModSub(a[i - p], modulus);
+                }
 
-            IntType mu = modulus.ComputeMu();  // Precompute the Barrett mu parameter
+                for (usint i = a.GetLength() - 1; i >= q; i--) {
+                    a[i].ModAddEq(a[i - q], modulus);
+                    a[i - q] = IntType(0).ModSub(a[i - q], modulus);
+                }
 
-            for (usint i = 0; i < n; i++) {
-                output[i] = element[i].ModSub(newQuotient2[cycloOrder - 1 - i], modulus, mu);
+                for (usint i = 0; i < l + p + q - 1; i++) {
+                    a[i] = IntType(0).ModSub(a[i], modulus);
+                    a[i + 1].ModSubEq(a[i], modulus);
+                }
+
+                for (usint i = a.GetLength() - 1; i >= cycloOrder; i--) {
+                    a[i - cycloOrder].ModAddEq(a[i], modulus);
+                    a[i] = 0;
+                }
+
+                for (usint i = a.GetLength() - 1; i >= 1; i--) {
+                    a[i].ModAddEq(a[i - 1], modulus);
+                    a[i - 1] = IntType(0).ModSub(a[i - 1], modulus);
+                }
+
+                for (usint i = 0; i < l + p; i++) {
+                    a[i] = IntType(0).ModSub(a[i], modulus);
+                    a[i + q].ModSubEq(a[i], modulus);
+                }
+
+                for (usint i = 0; i < l + q; i++) {
+                    a[i] = IntType(0).ModSub(a[i], modulus);
+                    a[i + p].ModSubEq(a[i], modulus);
+                }
+
+                for (usint i = 0; i < n; i++) {
+                    output[i] = a[i];
+                }
+            } else {
+                // precompute root of unity tables for division NTT
+                // if ((m_rootOfUnityDivisionTableByModulus[bigMod].GetLength() == 0) ||
+                //     (m_DivisionNTTModulus[modulus] != bigMod)) {
+                //     SetPreComputedNTTDivisionModulus(cycloOrder, modulus, bigMod, bigRoot);
+                // }
+
+                // cycloOrder is arbitrary
+                output = PolyMod(element, this->m_cyclotomicPolyMap[modulus], modulus);
+
+                // const auto& nttMod    = m_DivisionNTTModulus[modulus];
+                // const auto& rootTable = m_rootOfUnityDivisionTableByModulus[nttMod];
+                // VecType aPadded2(m_nttDivisionDim[cycloOrder], nttMod);
+                // // perform mod operation
+                // usint power = cycloOrder - n;
+                // for (usint i = n; i < element.GetLength(); i++) {
+                //     aPadded2[power - (i - n) - 1] = element[i];
+                // }
+                // VecType A(m_nttDivisionDim[cycloOrder]);
+                // NumberTheoreticTransformDyn<VecType>().ForwardTransformIterative(aPadded2, rootTable, &A);
+                // auto AB                      = A * m_cyclotomicPolyReverseNTTMap[modulus];
+                // const auto& rootTableInverse = m_rootOfUnityDivisionInverseTableByModulus[nttMod];
+                // VecType a(m_nttDivisionDim[cycloOrder]);
+                // NumberTheoreticTransformDyn<VecType>().InverseTransformIterative(AB, rootTableInverse, &a);
+
+                // VecType quotient(m_nttDivisionDim[cycloOrder], modulus);
+                // for (usint i = 0; i < power; i++) {
+                //     quotient[i] = a[i];
+                // }
+                // quotient.ModEq(modulus);
+                // quotient.SetModulus(nttMod);
+
+                // VecType newQuotient(m_nttDivisionDim[cycloOrder]);
+                // NumberTheoreticTransformDyn<VecType>().ForwardTransformIterative(quotient, rootTable, &newQuotient);
+                // newQuotient *= m_cyclotomicPolyNTTMap[modulus];
+
+                // VecType newQuotient2(m_nttDivisionDim[cycloOrder]);
+                // NumberTheoreticTransformDyn<VecType>().InverseTransformIterative(newQuotient, rootTableInverse,
+                //                                                                 &newQuotient2);
+                // newQuotient2.SetModulus(modulus);
+                // newQuotient2.ModEq(modulus);
+
+                // IntType mu = modulus.ComputeMu();  // Precompute the Barrett mu parameter
+
+                // for (usint i = 0; i < n; i++) {
+                //     output[i] = element[i].ModSub(newQuotient2[cycloOrder - 1 - i], modulus, mu);
+                // }
             }
         }
     }

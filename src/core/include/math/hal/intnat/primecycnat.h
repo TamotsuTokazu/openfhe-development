@@ -101,8 +101,10 @@ public:
     void ForwardFFTBase2n3(const VecType& element, const IntType& rootOfUnity, VecType* result);
 
     VecType ForwardRader(const VecType& element, const IntType& rootOfUnity);
+    VecType ForwardRaderPermute(const VecType& element, const IntType& rootOfUnity);
 
     VecType InverseRader(const VecType& element, const IntType& rootOfUnity);
+    VecType InverseRaderPermute(const VecType& element, const IntType& rootOfUnity);
 };
 
 }

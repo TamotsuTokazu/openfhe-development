@@ -262,6 +262,71 @@ VecType primecyc::RaderFFTNat<VecType>::ForwardRader(const VecType& element, con
     }
 
     ForwardFFTBase2n3(temp, rootOfUnityTot.ModExp(tot - 1, modulus), &out);
+
+    const auto &forward = m_forwardPermutation[order];
+
+    for (usint i = 0; i < tot; i++) {
+        if (forward[i] == 0) {
+            temp[tot - 1] = out[i];
+        } else {
+            temp[forward[i] - 1] = out[(tot - i) % tot];
+        }
+    }
+
+    return temp;
+}
+
+template <typename VecType>
+VecType primecyc::RaderFFTNat<VecType>::ForwardRaderPermute(const VecType& element, const IntType& rootOfUnity) {
+    usint tot = element.GetLength();
+    
+    auto modulus = element.GetModulus();
+    auto order = tot + 1;
+
+    if (m_forwardPermutation.find(order) == m_forwardPermutation.end()) {
+        PreComputeIsomorphism(order);
+    }
+
+    if (m_rootTableByModulusRoot.find({modulus, rootOfUnity}) == m_rootTableByModulusRoot.end()) {
+        PreComputeRootTable(order, {modulus, rootOfUnity});
+    }
+
+    const auto &indices = m_inversePermutation[order];
+    const auto &rootsT = m_rootTableByModulusRoot[{modulus, rootOfUnity}];
+    const auto &rootsTPrecon = m_rootPreconTableByModulusRoot[{modulus, rootOfUnity}];
+
+    auto temp = VecType(tot, modulus);
+    auto out = VecType(tot, modulus);
+
+    out[0] = element[tot - 1];
+    for (usint i = 1; i < tot; i++) {
+        out[i] = element[i - 1];
+    }
+
+    auto rootOfUnityTot = rootOfUnity.ModExp(order, modulus);
+
+    for (usint i = 0; i < tot; i++) {
+        temp[indices[i]] = out[i];
+    }
+
+    ForwardFFTBase2n3(temp, rootOfUnityTot, &out);
+
+    for (usint i = 0; i < tot; i++) {
+        out[i].ModMulFastConstEq(rootsT[i], modulus, rootsTPrecon[i]);
+    }
+
+    ForwardFFTBase2n3(out, rootOfUnityTot.ModExp(tot - 1, modulus), &temp);
+
+    const auto &forward = m_forwardPermutation[order];
+
+    for (usint i = 0; i < tot; i++) {
+        if (forward[i] == 0) {
+            out[tot - 1] = temp[i];
+        } else {
+            out[forward[i] - 1] = temp[(tot - i) % tot];
+        }
+    }
+
     return out;
 }
 
@@ -284,12 +349,22 @@ VecType primecyc::RaderFFTNat<VecType>::InverseRader(const VecType& element, con
     const auto &invRootsT = m_inverseRootTableByModulusRoot[{modulus, rootOfUnity}];
     const auto &invRootsTPrecon = m_inverseRootPreconTableByModulusRoot[{modulus, rootOfUnity}];
 
+    const auto &forward = m_forwardPermutation[order];
+
     auto temp = VecType(tot, modulus);
     auto out = VecType(tot, modulus);
 
     auto rootOfUnityTot = rootOfUnity.ModExp(order, modulus);
 
-    ForwardFFTBase2n3(element, rootOfUnityTot, &out);
+    for (usint i = 0; i < tot; i++) {
+        if (forward[i] == 0) {
+            temp[i] = element[tot - 1];
+        } else {
+            temp[(tot - i) % tot] = element[forward[i] - 1];
+        }
+    }
+
+    ForwardFFTBase2n3(temp, rootOfUnityTot, &out);
 
     for (usint i = 0; i < tot; i++) {
         out[i].ModMulFastConstEq(invRootsT[i], modulus, invRootsTPrecon[i]);
@@ -305,6 +380,56 @@ VecType primecyc::RaderFFTNat<VecType>::InverseRader(const VecType& element, con
     for (usint i = 1; i < tot; i++) {
         out[i] = out[0].ModAddFast(out[i], modulus);
     }
+
+    return out;
+}
+
+template <typename VecType>
+VecType primecyc::RaderFFTNat<VecType>::InverseRaderPermute(const VecType& element, const IntType& rootOfUnity) {
+    usint tot = element.GetLength();
+
+    auto modulus = element.GetModulus();
+    auto order = tot + 1;
+
+    if (m_forwardPermutation.find(order) == m_forwardPermutation.end()) {
+        PreComputeIsomorphism(order);
+    }
+
+    if (m_rootTableByModulusRoot.find({modulus, rootOfUnity}) == m_rootTableByModulusRoot.end()) {
+        PreComputeRootTable(order, {modulus, rootOfUnity});
+    }
+
+    const auto &indices = m_inversePermutation[order];
+    const auto &invRootsT = m_inverseRootTableByModulusRoot[{modulus, rootOfUnity}];
+    const auto &invRootsTPrecon = m_inverseRootPreconTableByModulusRoot[{modulus, rootOfUnity}];
+
+    auto temp = VecType(tot, modulus);
+    auto out = VecType(tot, modulus);
+
+    const auto &forward = m_forwardPermutation[order];
+
+    auto rootOfUnityTot = rootOfUnity.ModExp(order, modulus);
+
+    for (usint i = 0; i < tot; i++) {
+        if (forward[i] == 0) {
+            temp[i] = element[tot - 1];
+        } else {
+            temp[(tot - i) % tot] = element[forward[i] - 1];
+        }
+    }
+
+    ForwardFFTBase2n3(temp, rootOfUnityTot, &out);
+
+    for (usint i = 0; i < tot; i++) {
+        out[i].ModMulFastConstEq(invRootsT[i], modulus, invRootsTPrecon[i]);
+    }
+
+    ForwardFFTBase2n3(out, rootOfUnityTot.ModExp(tot - 1, modulus), &temp);
+
+    for (usint i = 1; i < tot; i++) {
+        out[i - 1] = temp[indices[i]];
+    }
+    out[tot - 1] = temp[indices[0]];
 
     return out;
 }
