@@ -294,11 +294,11 @@ public:
    * @param idx is the index to get a value at.
    * @return is the value at the index. return nullptr if invalid index.
    */
-    IntegerType& operator[](size_t idx) {
+    inline IntegerType& operator[](size_t idx) {
         return m_data[idx];
     }
 
-    const IntegerType& operator[](size_t idx) const {
+    inline const IntegerType& operator[](size_t idx) const {
         return m_data[idx];
     }
 

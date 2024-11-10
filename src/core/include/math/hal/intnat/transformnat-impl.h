@@ -1090,10 +1090,6 @@ template <typename VecType>
 VecType ChineseRemainderTransformArbNat<VecType>::ForwardTransform(const VecType& element, const IntType& root,
                                                                    const IntType& nttModulus, const IntType& nttRoot,
                                                                    const usint cycloOrder) {
-    usint phim = GetTotient(cycloOrder);
-    if (element.GetLength() != phim) {
-        OPENFHE_THROW("element size should be equal to phim");
-    }
 
     const auto& modulus                    = element.GetModulus();
     const ModulusRoot<IntType> modulusRoot = {modulus, root};
@@ -1136,10 +1132,6 @@ template <typename VecType>
 VecType ChineseRemainderTransformArbNat<VecType>::InverseTransform(const VecType& element, const IntType& root,
                                                                    const IntType& nttModulus, const IntType& nttRoot,
                                                                    const usint cycloOrder) {
-    usint phim = GetTotient(cycloOrder);
-    if (element.GetLength() != phim) {
-        OPENFHE_THROW("element size should be equal to phim");
-    }
 
     const auto& modulus = element.GetModulus();
     auto rootInverse(root.ModInverse(modulus));
