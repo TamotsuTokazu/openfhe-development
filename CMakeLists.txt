@@ -159,7 +159,7 @@ if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
 endif()
 
 if( WITH_NATIVEOPT )
-    set (NATIVE_OPT "-march=native")
+    set (NATIVE_OPT "-march=native -funroll-loops -ftree-vectorize -mavx")
 else()
     set (NATIVE_OPT "")
 endif()
