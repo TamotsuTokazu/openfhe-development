@@ -265,13 +265,11 @@ void primecyc::RaderFFTNat<VecType>::ForwardFFTBase2n3(const std::vector<IntType
         d = n >> (i + 1);
         for (usint j = 0; j != n; j += l1) {
             usint ind_jk = j;
-            usint ind_jkl0 = j + l0;
             for (usint k = 0; k < l0; k++) {
-                IntType y1 = result[ind_jkl0].ModMulFastConst(rootTable[k * d], modulus, rootTablePrecon[k * d]);
-                result[ind_jkl0] = result[ind_jk].ModSubFast(y1, modulus);
+                IntType y1 = result[ind_jk + l0].ModMulFastConst(rootTable[k * d], modulus, rootTablePrecon[k * d]);
+                result[ind_jk + l0] = result[ind_jk].ModSubFast(y1, modulus);
                 result[ind_jk].ModAddFastEq(y1, modulus);
                 ind_jk++;
-                ind_jkl0++;
             }
         }
     }
@@ -329,12 +327,12 @@ VecType primecyc::RaderFFTNat<VecType>::ForwardRader(const VecType& element, con
     const auto &rootsT = m_rootTableByModulusRoot[{modulus, rootOfUnity}];
     const auto &rootsTPrecon = m_rootPreconTableByModulusRoot[{modulus, rootOfUnity}];
 
-    auto temp = VecType(tot, modulus);
-    auto out = VecType(tot, modulus);
+    std::vector<IntType> temp(tot);
+    std::vector<IntType> out(tot);
 
     temp[0] = IntType(0).ModSub(element[0], modulus);
 
-#pragma omp simd
+#pragma GCC ivdep
     for (usint i = 1; i < tot; i++) {
         temp[i] = temp[0] + element[i];
         if (temp[i] >= modulus) {
@@ -344,22 +342,22 @@ VecType primecyc::RaderFFTNat<VecType>::ForwardRader(const VecType& element, con
 
     auto rootOfUnityTot = rootOfUnity.ModExp(order, modulus);
 
-#pragma omp simd
+#pragma GCC ivdep
     for (usint i = 0; i < tot; i++) {
         out[indices[i]] = temp[i];
     }
 
-    ForwardFFTBase2n3(out, rootOfUnityTot, &temp);
+    ForwardFFTBase2n3(out, modulus, rootOfUnityTot, temp);
 
-#pragma omp simd
+#pragma GCC ivdep
     for (usint i = 0; i < tot; i++) {
         temp[i].ModMulFastConstEq(rootsT[i], modulus, rootsTPrecon[i]);
     }
 
-    ForwardFFTBase2n3(temp, rootOfUnityTot.ModExp(tot - 1, modulus), &out);
+    ForwardFFTBase2n3(temp, modulus, rootOfUnityTot.ModExp(tot - 1, modulus), out);
 
     const auto &forward = m_forwardPermutation[order];
-#pragma omp simd
+#pragma GCC ivdep
     for (usint i = 0; i < tot; i++) {
         if (forward[i] == 0) {
             temp[tot - 1] = out[i];
@@ -368,7 +366,12 @@ VecType primecyc::RaderFFTNat<VecType>::ForwardRader(const VecType& element, con
         }
     }
 
-    return temp;
+    VecType result(tot, modulus);
+    for (usint i = 0; i < tot; i++) {
+        result[i] = temp[i];
+    }
+
+    return result;
 }
 
 template <typename VecType>
