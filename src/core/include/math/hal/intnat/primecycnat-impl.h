@@ -12,6 +12,8 @@
 #include <vector>
 #include <iostream>
 
+#include <immintrin.h>
+
 #include "math/hal/intnat/primecycnat.h"
 
 template <typename VecType>
@@ -303,6 +305,295 @@ void primecyc::RaderFFTNat<VecType>::ForwardFFTBase2n3(const std::vector<IntType
                 ind_jk++;
                 ind_jkl0++;
                 ind_jk2l0++;
+            }
+        }
+    }
+}
+
+static inline uint64_t mulmod(uint64_t a, uint64_t b, uint64_t m, uint64_t b_inv) {
+    uint64_t q = (uint64_t)(((unsigned __int128)a * b_inv) >> 64);
+    uint64_t y = a * b - q * m;
+    return y >= m ? y - m : y;
+}
+
+template <typename VecType>
+void primecyc::RaderFFTNat<VecType>::ForwardFFTBase2n3AVX(const std::vector<uint64_t> &element, uint64_t modulus, uint64_t rootOfUnity, std::vector<uint64_t> &result) {
+
+    usint n = element.size();
+    uint64_t Q = modulus;
+
+    if (m_bitReverseTableBase2n3.find(n) == m_bitReverseTableBase2n3.end()) {
+        PreComputeBitReverseTableBase2n3(n);
+    }
+
+    if (m_base2n3RootTableByModulusRoot.find({modulus, rootOfUnity}) == m_base2n3RootTableByModulusRoot.end()) {
+        PreComputeBase2n3RootTable(n, {modulus, rootOfUnity});
+    }
+
+    const auto &indices = m_bitReverseTableBase2n3[n];
+    for (usint i = 0; i < n; i++) {
+        result[i] = element[indices[i]];
+    }
+
+    auto [u, U, v, V] = m_Base2n3Info[n];
+
+    const auto &rootTable = m_base2n3RootTableByModulusRoot[{modulus, rootOfUnity}];
+    const auto &rootTablePrecon = m_base2n3RootPreconTableByModulusRoot[{modulus, rootOfUnity}];
+
+    static std::vector<uint64_t> rootTableAVX;
+    rootTableAVX.resize(n);
+    for (usint i = 0; i < n; i++) {
+        rootTableAVX[i] = rootTable[i].ConvertToInt();
+    }
+    static std::vector<uint64_t> rootTablePreconAVX;
+    rootTablePreconAVX.resize(n);
+    for (usint i = 0; i < n; i++) {
+        rootTablePreconAVX[i] = rootTablePrecon[i].ConvertToInt();
+    }
+
+    usint l0 = 1, l1 = 1, d = n;
+
+    __m128i Q_vec = _mm_set1_epi64x(Q);
+    __m128i Q_minus_one_vec = _mm_set1_epi64x(Q - 1);
+
+    __m256i Q_vec_256 = _mm256_set1_epi64x(Q);
+    __m256i Q_minus_one_vec_256 = _mm256_set1_epi64x(Q - 1);
+
+    // i = 0
+    {
+        size_t j = 0;
+
+        // Process pairs of elements using AVX2
+        for (j = 0; j + 3 < n; j += 4) {
+            // Load elements
+            __m128i Vj_lo = _mm_loadu_si128((__m128i*)&result[j]);     // [result[j], result[j+1]]
+            __m128i Vj_hi = _mm_loadu_si128((__m128i*)&result[j + 2]); // [result[j+2], result[j+3]]
+
+            // Unpack to get V0 and V1
+            __m128i V0 = _mm_unpacklo_epi64(Vj_lo, Vj_hi); 
+            __m128i V1 = _mm_unpackhi_epi64(Vj_lo, Vj_hi);
+
+            // Compute sums and differences
+            __m128i Vsum = _mm_add_epi64(V0, V1);
+            __m128i Vdiff = _mm_sub_epi64(V0, V1);
+
+            // Compute mask for sum >= Q
+            __m128i mask_sum = _mm_cmpgt_epi64(Vsum, Q_minus_one_vec);
+
+            // Adjust sum where sum >= Q: adj_sum = sum - Q where mask is true
+            __m128i adj_sum = _mm_sub_epi64(Vsum, _mm_and_si128(mask_sum, Q_vec));
+
+            __m128i mask_diff = _mm_cmpgt_epi64(V1, V0);
+            __m128i adj_diff = _mm_add_epi64(Vdiff, _mm_and_si128(mask_diff, Q_vec));
+
+            // Store results back
+            _mm_storel_epi64((__m128i*)&result[j], adj_sum);                 // result[j]
+            _mm_storeh_pd((double*)&result[j + 2], _mm_castsi128_pd(adj_sum)); // result[j+2]
+            _mm_storel_epi64((__m128i*)&result[j + 1], adj_diff);                   // result[j+1]
+            _mm_storeh_pd((double*)&result[j + 3], _mm_castsi128_pd(adj_diff));     // result[j+3]
+        }
+
+        // Process remaining elements
+        for (; j < n; j += 2) {
+            auto t = result[j + 1];
+            if (result[j] < t) {
+                result[j + 1] = result[j] + Q - t;
+            } else {
+                result[j + 1] = result[j] - t;
+            }
+            result[j] += t;
+            if (result[j] >= Q) {
+                result[j] -= Q;
+            }
+        }
+    }
+
+    for (usint i = 1; i < u; i++) {
+        l0 = 1 << i;
+        l1 = 1 << (i + 1);
+        d = n >> (i + 1);
+        for (usint j = 0; j < n; j += l1) {
+            usint k = 0;
+            for (; k + 3 < l0; k += 4) {
+                uint64_t y0 = mulmod(result[j + k + l0], rootTableAVX[k * d], Q, rootTablePreconAVX[k * d]);
+                uint64_t y1 = mulmod(result[j + k + l0 + 1], rootTableAVX[(k + 1) * d], Q, rootTablePreconAVX[(k + 1) * d]);
+                uint64_t y2 = mulmod(result[j + k + l0 + 2], rootTableAVX[(k + 2) * d], Q, rootTablePreconAVX[(k + 2) * d]);
+                uint64_t y3 = mulmod(result[j + k + l0 + 3], rootTableAVX[(k + 3) * d], Q, rootTablePreconAVX[(k + 3) * d]);
+
+                // Load result[j + k] to result[j + k + 3]
+                __m256i rvec = _mm256_loadu_si256((__m256i*)&result[j + k]);
+
+                // Set yvec = [y3, y2, y1, y0]
+                __m256i yvec = _mm256_set_epi64x(y3, y2, y1, y0);
+
+                // Compute sum = rvec + yvec
+                __m256i sum = _mm256_add_epi64(rvec, yvec);
+
+                // Compute mask for sum >= Q
+                __m256i mask_sum = _mm256_cmpgt_epi64(sum, Q_minus_one_vec_256);
+
+                // Adjust sum where sum >= Q: adj_sum = sum - Q where mask is true
+                __m256i adj_sum = _mm256_sub_epi64(sum, _mm256_and_si256(mask_sum, Q_vec_256));
+
+                // Store adjusted sum back to result[j + k] to result[j + k + 3]
+                _mm256_storeu_si256((__m256i*)&result[j + k], adj_sum);
+
+                // Compute diff = rvec - yvec
+                __m256i diff = _mm256_sub_epi64(rvec, yvec);
+
+                // Compute mask for rvec < yvec
+                __m256i mask_diff = _mm256_cmpgt_epi64(yvec, rvec);
+
+                // Adjust diff where rvec < yvec: adj_diff = diff + Q where mask is true
+                __m256i adj_diff = _mm256_add_epi64(diff, _mm256_and_si256(mask_diff, Q_vec_256));
+
+                // Store adjusted diff to result[j + k + l0] to result[j + k + l0 + 3]
+                _mm256_storeu_si256((__m256i*)&result[j + k + l0], adj_diff);
+            }
+
+            for (; k < l0; k += 2) {
+                uint64_t y0 = mulmod(result[j + k + l0], rootTableAVX[k * d], Q, rootTablePreconAVX[k * d]);
+                uint64_t y1 = mulmod(result[j + k + l0 + 1], rootTableAVX[(k + 1) * d], Q, rootTablePreconAVX[(k + 1) * d]);
+                // Load result[j + k] and result[j + k + 1]
+                __m128i rvec = _mm_loadu_si128((__m128i*)&result[j + k]);
+
+                // Set yvec = [y1, y0]
+                __m128i yvec = _mm_set_epi64x(y1, y0);
+
+                // Compute sum = rvec + yvec
+                __m128i sum = _mm_add_epi64(rvec, yvec);
+
+                // Compute mask for sum >= Q
+                __m128i mask_sum = _mm_cmpgt_epi64(sum, Q_minus_one_vec);
+
+                // Adjust sum where sum >= Q: adj_sum = sum - Q where mask is true
+                __m128i adj_sum = _mm_sub_epi64(sum, _mm_and_si128(mask_sum, Q_vec));
+
+                // Store adjusted sum back to result[j + k] and result[j + k + 1]
+                _mm_storeu_si128((__m128i*)&result[j + k], adj_sum);
+
+                // Compute diff = rvec - yvec
+                __m128i diff = _mm_sub_epi64(rvec, yvec);
+
+                // Compute mask for rvec < yvec
+                __m128i mask_diff = _mm_cmpgt_epi64(yvec, rvec);
+
+                // Adjust diff where rvec < yvec: adj_diff = diff + Q where mask is true
+                __m128i adj_diff = _mm_add_epi64(diff, _mm_and_si128(mask_diff, Q_vec));
+
+                // Store adjusted diff to result[j + k + l0] and result[j + k + l0 + 1]
+                _mm_storeu_si128((__m128i*)&result[j + k + l0], adj_diff);
+            }
+        }
+    }
+
+    uint64_t z3 = rootTableAVX[n / 3], z32 = rootTableAVX[2 * n / 3];
+    uint64_t z3precon = rootTablePreconAVX[n / 3], z32precon = rootTablePreconAVX[2 * n / 3];
+
+    for (usint i = 0; i < v; i++) {
+        l0 = U;
+        l1 = U * 3;
+        d = n / (3 * U);
+        for (usint t = 0; t < i; t++) {
+            l0 *= 3;
+            l1 *= 3;
+            d /= 3;
+        }
+        for (usint j = 0; j != n; j += l1) {
+            usint k = 0;
+
+            for (; k + 3 < l0; k += 4) {
+                uint64_t y01 = mulmod(result[j + k + l0], rootTableAVX[k * d], Q, rootTablePreconAVX[k * d]);
+                uint64_t y02 = mulmod(result[j + k + l0 * 2], rootTableAVX[k * d * 2], Q, rootTablePreconAVX[k * d * 2]);
+
+                uint64_t y11 = mulmod(result[j + k + l0 + 1], rootTableAVX[(k + 1) * d], Q, rootTablePreconAVX[(k + 1) * d]);
+                uint64_t y12 = mulmod(result[j + k + l0 * 2 + 1], rootTableAVX[(k + 1) * d * 2], Q, rootTablePreconAVX[(k + 1) * d * 2]);
+
+                uint64_t y21 = mulmod(result[j + k + l0 + 2], rootTableAVX[(k + 2) * d], Q, rootTablePreconAVX[(k + 2) * d]);
+                uint64_t y22 = mulmod(result[j + k + l0 * 2 + 2], rootTableAVX[(k + 2) * d * 2], Q, rootTablePreconAVX[(k + 2) * d * 2]);
+
+                uint64_t y31 = mulmod(result[j + k + l0 + 3], rootTableAVX[(k + 3) * d], Q, rootTablePreconAVX[(k + 3) * d]);
+                uint64_t y32 = mulmod(result[j + k + l0 * 2 + 3], rootTableAVX[(k + 3) * d * 2], Q, rootTablePreconAVX[(k + 3) * d * 2]);
+
+                uint64_t y00 = y01 + y02;
+                uint64_t y10 = y11 + y12;
+                uint64_t y20 = y21 + y22;
+                uint64_t y30 = y31 + y32;
+
+                uint64_t w0 = mulmod(y01, z3, Q, z3precon) + mulmod(y02, z32, Q, z32precon);
+                uint64_t w1 = mulmod(y11, z3, Q, z3precon) + mulmod(y12, z32, Q, z32precon);
+                uint64_t w2 = mulmod(y21, z3, Q, z3precon) + mulmod(y22, z32, Q, z32precon);
+                uint64_t w3 = mulmod(y31, z3, Q, z3precon) + mulmod(y32, z32, Q, z32precon);
+
+                __m256i w_vec = _mm256_set_epi64x(w3, w2, w1, w0);
+                __m256i w_mask = _mm256_cmpgt_epi64(w_vec, Q_minus_one_vec_256);
+                w_vec = _mm256_sub_epi64(w_vec, _mm256_and_si256(w_mask, Q_vec_256));
+
+                __m256i rvec = _mm256_loadu_si256((__m256i*)&result[j + k]);
+                __m256i reg1 = _mm256_add_epi64(rvec, w_vec);
+                __m256i mask_1 = _mm256_cmpgt_epi64(reg1, Q_minus_one_vec_256);
+                reg1 = _mm256_sub_epi64(reg1, _mm256_and_si256(mask_1, Q_vec_256));
+                _mm256_storeu_si256((__m256i*)&result[j + k + l0], reg1);
+
+                __m256i y0vec = _mm256_set_epi64x(y30, y20, y10, y00);
+                __m256i y0_mask = _mm256_cmpgt_epi64(y0vec, Q_minus_one_vec_256);
+                y0vec = _mm256_sub_epi64(y0vec, _mm256_and_si256(y0_mask, Q_vec_256));
+
+                __m256i y0wvec = _mm256_add_epi64(y0vec, w_vec);
+                __m256i y0w_mask = _mm256_cmpgt_epi64(y0wvec, Q_minus_one_vec_256);
+                y0wvec = _mm256_sub_epi64(y0wvec, _mm256_and_si256(y0w_mask, Q_vec_256));
+
+                __m256i reg2 = _mm256_sub_epi64(rvec, y0wvec);
+                __m256i mask_2 = _mm256_cmpgt_epi64(y0wvec, rvec);
+                reg2 = _mm256_add_epi64(reg2, _mm256_and_si256(mask_2, Q_vec_256));
+                _mm256_storeu_si256((__m256i*)&result[j + k + l0 + l0], reg2);
+
+                __m256i reg0 = _mm256_add_epi64(rvec, y0vec);
+                __m256i mask_0 = _mm256_cmpgt_epi64(reg0, Q_minus_one_vec_256);
+                reg0 = _mm256_sub_epi64(reg0, _mm256_and_si256(mask_0, Q_vec_256 ));
+                _mm256_storeu_si256((__m256i*)&result[j + k], reg0);
+            }
+
+            for (; k < l0; k += 2) {
+                uint64_t y01 = mulmod(result[j + k + l0], rootTableAVX[k * d], Q, rootTablePreconAVX[k * d]);
+                uint64_t y02 = mulmod(result[j + k + l0 * 2], rootTableAVX[k * d * 2], Q, rootTablePreconAVX[k * d * 2]);
+
+                uint64_t y11 = mulmod(result[j + k + l0 + 1], rootTableAVX[(k + 1) * d], Q, rootTablePreconAVX[(k + 1) * d]);
+                uint64_t y12 = mulmod(result[j + k + l0 * 2 + 1], rootTableAVX[(k + 1) * d * 2], Q, rootTablePreconAVX[(k + 1) * d * 2]);
+
+                uint64_t y00 = y01 + y02;
+                uint64_t y10 = y11 + y12;
+
+                uint64_t w0 = mulmod(y01, z3, Q, z3precon) + mulmod(y02, z32, Q, z32precon);
+                uint64_t w1 = mulmod(y11, z3, Q, z3precon) + mulmod(y12, z32, Q, z32precon);
+
+                __m128i w_vec = _mm_set_epi64x(w1, w0);
+                __m128i w_mask = _mm_cmpgt_epi64(w_vec, Q_minus_one_vec);
+                w_vec = _mm_sub_epi64(w_vec, _mm_and_si128(w_mask, Q_vec));
+
+                __m128i rvec = _mm_loadu_si128((__m128i*)&result[j + k]);
+                __m128i reg1 = _mm_add_epi64(rvec, w_vec);
+                __m128i mask_1 = _mm_cmpgt_epi64(reg1, Q_minus_one_vec);
+                reg1 = _mm_sub_epi64(reg1, _mm_and_si128(mask_1, Q_vec));
+                _mm_storeu_si128((__m128i*)&result[j + k + l0], reg1);
+
+                __m128i y0vec = _mm_set_epi64x(y10, y00);
+                __m128i y0_mask = _mm_cmpgt_epi64(y0vec, Q_minus_one_vec);
+                y0vec = _mm_sub_epi64(y0vec, _mm_and_si128(y0_mask, Q_vec));
+
+                __m128i y0wvec = _mm_add_epi64(y0vec, w_vec);
+                __m128i y0w_mask = _mm_cmpgt_epi64(y0wvec, Q_minus_one_vec);
+                y0wvec = _mm_sub_epi64(y0wvec, _mm_and_si128(y0w_mask, Q_vec));
+
+                __m128i reg2 = _mm_sub_epi64(rvec, y0wvec);
+                __m128i mask_2 = _mm_cmpgt_epi64(y0wvec, rvec);
+                reg2 = _mm_add_epi64(reg2, _mm_and_si128(mask_2, Q_vec));
+                _mm_storeu_si128((__m128i*)&result[j + k + l0 + l0], reg2);
+
+                __m128i reg0 = _mm_add_epi64(rvec, y0vec);
+                __m128i mask_0 = _mm_cmpgt_epi64(reg0, Q_minus_one_vec);
+                reg0 = _mm_sub_epi64(reg0, _mm_and_si128(mask_0, Q_vec));
+                _mm_storeu_si128((__m128i*)&result[j + k], reg0);
             }
         }
     }

@@ -100,6 +100,7 @@ public:
 
     void ForwardFFTBase2n3(const VecType& element, const IntType& rootOfUnity, VecType* result);
     void ForwardFFTBase2n3(const std::vector<IntType> &element, const IntType &modulus, const IntType &rootOfUnity, std::vector<IntType> &result);
+    void ForwardFFTBase2n3AVX(const std::vector<uint64_t> &element, uint64_t modulus, uint64_t rootOfUnity, std::vector<uint64_t> &result);
 
     VecType ForwardRader(const VecType& element, const IntType& rootOfUnity);
     VecType ForwardRaderPermute(const VecType& element, const IntType& rootOfUnity);
