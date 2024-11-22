@@ -75,18 +75,18 @@ class RaderFFTNat {
 public:
 
     static std::map<usint, std::vector<usint>> m_bitReverseTableBase2n3;
-    static std::map<ModulusRoot<IntType>, std::vector<IntType>> m_base2n3RootTableByModulusRoot;
-    static std::map<ModulusRoot<IntType>, std::vector<IntType>> m_base2n3RootPreconTableByModulusRoot;
+    static std::map<ModulusRoot<IntType>, std::vector<uint64_t>> m_base2n3RootTableByModulusRoot;
+    static std::map<ModulusRoot<IntType>, std::vector<uint64_t>> m_base2n3RootPreconTableByModulusRoot;
     static std::map<usint, std::array<usint, 4>> m_Base2n3Info;
 
     static std::map<usint, std::vector<usint>> m_forwardPermutation;
     static std::map<usint, std::vector<usint>> m_inversePermutation;
 
-    static std::map<ModulusRoot<IntType>, std::vector<IntType>> m_rootTableByModulusRoot;
-    static std::map<ModulusRoot<IntType>, std::vector<IntType>> m_rootPreconTableByModulusRoot;
+    static std::map<ModulusRoot<IntType>, std::vector<uint64_t>> m_rootTableByModulusRoot;
+    static std::map<ModulusRoot<IntType>, std::vector<uint64_t>> m_rootPreconTableByModulusRoot;
 
-    static std::map<ModulusRoot<IntType>, std::vector<IntType>> m_inverseRootTableByModulusRoot;
-    static std::map<ModulusRoot<IntType>, std::vector<IntType>> m_inverseRootPreconTableByModulusRoot;
+    static std::map<ModulusRoot<IntType>, std::vector<uint64_t>> m_inverseRootTableByModulusRoot;
+    static std::map<ModulusRoot<IntType>, std::vector<uint64_t>> m_inverseRootPreconTableByModulusRoot;
 
     static std::map<usint, bool> m_enabled;
 
@@ -98,8 +98,6 @@ public:
 
     void PreComputeBase2n3RootTable(usint cycloOrder, const ModulusRoot<IntType>& nttModulusRoot);
 
-    void ForwardFFTBase2n3(const VecType& element, const IntType& rootOfUnity, VecType* result);
-    void ForwardFFTBase2n3(const std::vector<IntType> &element, const IntType &modulus, const IntType &rootOfUnity, std::vector<IntType> &result);
     void ForwardFFTBase2n3AVX(const std::vector<uint64_t> &element, uint64_t modulus, uint64_t rootOfUnity, std::vector<uint64_t> &result);
 
     VecType ForwardRader(const VecType& element, const IntType& rootOfUnity);

@@ -20,10 +20,10 @@ template <typename VecType>
 std::map<usint, std::vector<usint>> primecyc::RaderFFTNat<VecType>::m_bitReverseTableBase2n3;
 
 template <typename VecType>
-std::map<primecyc::ModulusRoot<typename VecType::Integer>, std::vector<typename VecType::Integer>> primecyc::RaderFFTNat<VecType>::m_base2n3RootPreconTableByModulusRoot;
+std::map<primecyc::ModulusRoot<typename VecType::Integer>, std::vector<uint64_t>> primecyc::RaderFFTNat<VecType>::m_base2n3RootPreconTableByModulusRoot;
 
 template <typename VecType>
-std::map<primecyc::ModulusRoot<typename VecType::Integer>, std::vector<typename VecType::Integer>> primecyc::RaderFFTNat<VecType>::m_base2n3RootTableByModulusRoot;
+std::map<primecyc::ModulusRoot<typename VecType::Integer>, std::vector<uint64_t>> primecyc::RaderFFTNat<VecType>::m_base2n3RootTableByModulusRoot;
 
 template <typename VecType>
 std::map<usint, std::array<usint, 4>> primecyc::RaderFFTNat<VecType>::m_Base2n3Info;
@@ -35,16 +35,16 @@ template <typename VecType>
 std::map<usint, std::vector<usint>> primecyc::RaderFFTNat<VecType>::m_inversePermutation;
 
 template <typename VecType>
-std::map<primecyc::ModulusRoot<typename VecType::Integer>, std::vector<typename VecType::Integer>> primecyc::RaderFFTNat<VecType>::m_rootTableByModulusRoot;
+std::map<primecyc::ModulusRoot<typename VecType::Integer>, std::vector<uint64_t>> primecyc::RaderFFTNat<VecType>::m_rootTableByModulusRoot;
 
 template <typename VecType>
-std::map<primecyc::ModulusRoot<typename VecType::Integer>, std::vector<typename VecType::Integer>> primecyc::RaderFFTNat<VecType>::m_rootPreconTableByModulusRoot;
+std::map<primecyc::ModulusRoot<typename VecType::Integer>, std::vector<uint64_t>> primecyc::RaderFFTNat<VecType>::m_rootPreconTableByModulusRoot;
 
 template <typename VecType>
-std::map<primecyc::ModulusRoot<typename VecType::Integer>, std::vector<typename VecType::Integer>> primecyc::RaderFFTNat<VecType>::m_inverseRootTableByModulusRoot;
+std::map<primecyc::ModulusRoot<typename VecType::Integer>, std::vector<uint64_t>> primecyc::RaderFFTNat<VecType>::m_inverseRootTableByModulusRoot;
 
 template <typename VecType>
-std::map<primecyc::ModulusRoot<typename VecType::Integer>, std::vector<typename VecType::Integer>> primecyc::RaderFFTNat<VecType>::m_inverseRootPreconTableByModulusRoot;
+std::map<primecyc::ModulusRoot<typename VecType::Integer>, std::vector<uint64_t>> primecyc::RaderFFTNat<VecType>::m_inverseRootPreconTableByModulusRoot;
 
 template <typename VecType>
 std::map<usint, bool> primecyc::RaderFFTNat<VecType>::m_enabled;
@@ -83,29 +83,29 @@ void primecyc::RaderFFTNat<VecType>::PreComputeRootTable(usint cycloOrder, const
 
     IntType z = rootOfUnityOrder.ModMulFast(IntType(tot).ModInverse(nttModulusRoot.first), nttModulusRoot.first);
 
-    std::vector<typename VecType::Integer> rootTable(tot);
-    std::vector<typename VecType::Integer> rootPreconTable(tot);
-    std::vector<typename VecType::Integer> inverseRootTable(tot);
-    std::vector<typename VecType::Integer> inverseRootPreconTable(tot);
+    std::vector<uint64_t> rootTable(tot);
+    std::vector<uint64_t> rootPreconTable(tot);
+    std::vector<uint64_t> inverseRootTable(tot);
+    std::vector<uint64_t> inverseRootPreconTable(tot);
 
     for (usint i = 1; i <= tot; i++) {
         if (indices[i] == 0) {
-            rootTable[0] = z;
+            rootTable[0] = z.ConvertToInt();
         } else {
-            rootTable[tot - indices[i]] = z;
+            rootTable[tot - indices[i]] = z.ConvertToInt();
         }
         z.ModMulFastEq(rootOfUnityOrder, nttModulusRoot.first);
     }
 
-    std::vector<typename VecType::Integer> rootTableT(tot);
-    ForwardFFTBase2n3(rootTable, nttModulusRoot.first, rootOfUnityTot, rootTableT);
+    std::vector<uint64_t> rootTableT(tot);
+    ForwardFFTBase2n3AVX(rootTable, nttModulusRoot.first.ConvertToInt(), rootOfUnityTot.ConvertToInt(), rootTableT);
 
     IntType w = IntType(tot).ModInverse(nttModulusRoot.first).ModExp(2, nttModulusRoot.first);
 
     for (usint i = 0; i < tot; i++) {
-        inverseRootTable[i] = rootTableT[i].ModInverse(nttModulusRoot.first).ModMulFast(w, nttModulusRoot.first);
-        rootPreconTable[i] = rootTableT[i].PrepModMulConst(nttModulusRoot.first);
-        inverseRootPreconTable[i] = inverseRootTable[i].PrepModMulConst(nttModulusRoot.first);
+        inverseRootTable[i] = IntType(rootTableT[i]).ModInverse(nttModulusRoot.first).ModMulFast(w, nttModulusRoot.first).ConvertToInt();
+        rootPreconTable[i] = IntType(rootTableT[i]).PrepModMulConst(nttModulusRoot.first).ConvertToInt();
+        inverseRootPreconTable[i] = IntType(inverseRootTable[i]).PrepModMulConst(nttModulusRoot.first).ConvertToInt();
     }
 
     m_rootTableByModulusRoot[nttModulusRoot] = rootTableT;
@@ -142,172 +142,17 @@ void primecyc::RaderFFTNat<VecType>::PreComputeBase2n3RootTable(usint order, con
     auto rootOfUnity = nttModulusRoot.second;
     typename VecType::Integer z = 1;
 
-    std::vector<typename VecType::Integer> rootTable(order);
-    std::vector<typename VecType::Integer> rootPreconTable(order);
+    std::vector<uint64_t> rootTable(order);
+    std::vector<uint64_t> rootPreconTable(order);
 
     for (usint i = 0; i < order; i++) {
-        rootTable[i] = z;
-        rootPreconTable[i] = z.PrepModMulConst(nttModulusRoot.first);
+        rootTable[i] = z.ConvertToInt();
+        rootPreconTable[i] = z.PrepModMulConst(nttModulusRoot.first).ConvertToInt();
         z.ModMulFastEq(rootOfUnity, nttModulusRoot.first);
     }
 
     m_base2n3RootTableByModulusRoot[nttModulusRoot] = rootTable;
     m_base2n3RootPreconTableByModulusRoot[nttModulusRoot] = rootPreconTable;
-}
-
-template <typename VecType>
-void primecyc::RaderFFTNat<VecType>::ForwardFFTBase2n3(const VecType& element, const IntType& rootOfUnity, VecType* result) {
-    using IntType = primecyc::RaderFFTNat<VecType>::IntType;
-
-    usint n = element.GetLength();
-
-    auto modulus = element.GetModulus();
-    result->SetModulus(modulus);
-
-    if (m_bitReverseTableBase2n3.find(n) == m_bitReverseTableBase2n3.end()) {
-        PreComputeBitReverseTableBase2n3(n);
-    }
-
-    if (m_base2n3RootTableByModulusRoot.find({modulus, rootOfUnity}) == m_base2n3RootTableByModulusRoot.end()) {
-        PreComputeBase2n3RootTable(n, {modulus, rootOfUnity});
-    }
-
-    const auto &indices = m_bitReverseTableBase2n3[n];
-    for (usint i = 0; i < n; i++) {
-        (*result)[i] = element[indices[i]];
-    }
-
-    auto [u, U, v, V] = m_Base2n3Info[n];
-
-    const auto &rootTable = m_base2n3RootTableByModulusRoot[{modulus, rootOfUnity}];
-    const auto &rootTablePrecon = m_base2n3RootPreconTableByModulusRoot[{modulus, rootOfUnity}];
-
-    usint l0 = 1, l1 = 1, d = n;
-
-    for (usint i = 0; i < u; i++) {
-        l0 = 1 << i;
-        l1 = 1 << (i + 1);
-        d = n >> (i + 1);
-        for (usint j = 0; j != n; j += l1) {
-            usint ind_jk = j;
-            usint ind_jkl0 = j + l0;
-            for (usint k = 0; k < l0; k++) {
-                IntType y1 = (*result)[ind_jkl0].ModMulFastConst(rootTable[k * d], modulus, rootTablePrecon[k * d]);
-                (*result)[ind_jkl0] = (*result)[ind_jk].ModSubFast(y1, modulus);
-                (*result)[ind_jk].ModAddFastEq(y1, modulus);
-                ind_jk++;
-                ind_jkl0++;
-            }
-        }
-    }
-
-    IntType z3 = rootTable[n / 3], z32 = rootTable[2 * n / 3];
-    IntType z3precon = rootTablePrecon[n / 3], z32precon = rootTablePrecon[2 * n / 3];
-
-    for (usint i = 0; i < v; i++) {
-        l0 = U;
-        l1 = U * 3;
-        d = n / (3 * U);
-        for (usint t = 0; t < i; t++) {
-            l0 *= 3;
-            l1 *= 3;
-            d /= 3;
-        }
-        for (usint j = 0; j != n; j += l1) {
-            usint ind_kd = 0;
-            usint ind_jk = j;
-            usint ind_jkl0 = j + l0;
-            usint ind_jk2l0 = j + 2 * l0;
-            for (usint k = 0; k < l0; k++) {
-                IntType y1 = (*result)[ind_jkl0].ModMulFastConst(rootTable[ind_kd], modulus, rootTablePrecon[ind_kd]);
-                IntType y2 = (*result)[ind_jk2l0].ModMulFastConst(rootTable[ind_kd * 2], modulus, rootTablePrecon[ind_kd * 2]);
-                IntType y0 = y1.ModAddFast(y2, modulus);
-                IntType w = y1.ModMulFastConst(z3, modulus, z3precon).ModAddFast(y2.ModMulFastConst(z32, modulus, z32precon), modulus);
-                (*result)[ind_jkl0] = (*result)[ind_jk].ModAddFast(w, modulus);
-                (*result)[ind_jk2l0] = (*result)[ind_jk].ModSubFast(y0.ModAddFast(w, modulus), modulus);
-                (*result)[ind_jk].ModAddFastEq(y0, modulus);
-                ind_kd += d;
-                ind_jk++;
-                ind_jkl0++;
-                ind_jk2l0++;
-            }
-        }
-    }
-}
-
-template <typename VecType>
-void primecyc::RaderFFTNat<VecType>::ForwardFFTBase2n3(const std::vector<IntType> &element, const IntType &modulus, const IntType &rootOfUnity, std::vector<IntType> &result) {
-    using IntType = primecyc::RaderFFTNat<VecType>::IntType;
-
-    usint n = element.size();
-
-    if (m_bitReverseTableBase2n3.find(n) == m_bitReverseTableBase2n3.end()) {
-        PreComputeBitReverseTableBase2n3(n);
-    }
-
-    if (m_base2n3RootTableByModulusRoot.find({modulus, rootOfUnity}) == m_base2n3RootTableByModulusRoot.end()) {
-        PreComputeBase2n3RootTable(n, {modulus, rootOfUnity});
-    }
-
-    const auto &indices = m_bitReverseTableBase2n3[n];
-    for (usint i = 0; i < n; i++) {
-        result[i] = element[indices[i]];
-    }
-
-    auto [u, U, v, V] = m_Base2n3Info[n];
-
-    const auto &rootTable = m_base2n3RootTableByModulusRoot[{modulus, rootOfUnity}];
-    const auto &rootTablePrecon = m_base2n3RootPreconTableByModulusRoot[{modulus, rootOfUnity}];
-
-    usint l0 = 1, l1 = 1, d = n;
-
-    for (usint i = 0; i < u; i++) {
-        l0 = 1 << i;
-        l1 = 1 << (i + 1);
-        d = n >> (i + 1);
-        for (usint j = 0; j != n; j += l1) {
-            usint ind_jk = j;
-            for (usint k = 0; k < l0; k++) {
-                IntType y1 = result[ind_jk + l0].ModMulFastConst(rootTable[k * d], modulus, rootTablePrecon[k * d]);
-                result[ind_jk + l0] = result[ind_jk].ModSubFast(y1, modulus);
-                result[ind_jk].ModAddFastEq(y1, modulus);
-                ind_jk++;
-            }
-        }
-    }
-
-    IntType z3 = rootTable[n / 3], z32 = rootTable[2 * n / 3];
-    IntType z3precon = rootTablePrecon[n / 3], z32precon = rootTablePrecon[2 * n / 3];
-
-    for (usint i = 0; i < v; i++) {
-        l0 = U;
-        l1 = U * 3;
-        d = n / (3 * U);
-        for (usint t = 0; t < i; t++) {
-            l0 *= 3;
-            l1 *= 3;
-            d /= 3;
-        }
-        for (usint j = 0; j != n; j += l1) {
-            usint ind_kd = 0;
-            usint ind_jk = j;
-            usint ind_jkl0 = j + l0;
-            usint ind_jk2l0 = j + 2 * l0;
-            for (usint k = 0; k < l0; k++) {
-                IntType y1 = result[ind_jkl0].ModMulFastConst(rootTable[ind_kd], modulus, rootTablePrecon[ind_kd]);
-                IntType y2 = result[ind_jk2l0].ModMulFastConst(rootTable[ind_kd * 2], modulus, rootTablePrecon[ind_kd * 2]);
-                IntType y0 = y1.ModAddFast(y2, modulus);
-                IntType w = y1.ModMulFastConst(z3, modulus, z3precon).ModAddFast(y2.ModMulFastConst(z32, modulus, z32precon), modulus);
-                result[ind_jkl0] = result[ind_jk].ModAddFast(w, modulus);
-                result[ind_jk2l0] = result[ind_jk].ModSubFast(y0.ModAddFast(w, modulus), modulus);
-                result[ind_jk].ModAddFastEq(y0, modulus);
-                ind_kd += d;
-                ind_jk++;
-                ind_jkl0++;
-                ind_jk2l0++;
-            }
-        }
-    }
 }
 
 static inline uint64_t mulmod(uint64_t a, uint64_t b, uint64_t m, uint64_t b_inv) {
@@ -337,19 +182,8 @@ void primecyc::RaderFFTNat<VecType>::ForwardFFTBase2n3AVX(const std::vector<uint
 
     auto [u, U, v, V] = m_Base2n3Info[n];
 
-    const auto &rootTable = m_base2n3RootTableByModulusRoot[{modulus, rootOfUnity}];
-    const auto &rootTablePrecon = m_base2n3RootPreconTableByModulusRoot[{modulus, rootOfUnity}];
-
-    static std::vector<uint64_t> rootTableAVX;
-    rootTableAVX.resize(n);
-    for (usint i = 0; i < n; i++) {
-        rootTableAVX[i] = rootTable[i].ConvertToInt();
-    }
-    static std::vector<uint64_t> rootTablePreconAVX;
-    rootTablePreconAVX.resize(n);
-    for (usint i = 0; i < n; i++) {
-        rootTablePreconAVX[i] = rootTablePrecon[i].ConvertToInt();
-    }
+    const auto &rootTableAVX = m_base2n3RootTableByModulusRoot[{modulus, rootOfUnity}];
+    const auto &rootTablePreconAVX = m_base2n3RootPreconTableByModulusRoot[{modulus, rootOfUnity}];
 
     usint l0 = 1, l1 = 1, d = n;
 
@@ -601,6 +435,8 @@ void primecyc::RaderFFTNat<VecType>::ForwardFFTBase2n3AVX(const std::vector<uint
 
 template <typename VecType>
 VecType primecyc::RaderFFTNat<VecType>::ForwardRader(const VecType& element, const IntType& rootOfUnity) {
+    using Integer = typename VecType::Integer;
+
     usint tot = element.GetLength();
     
     auto modulus = element.GetModulus();
@@ -618,37 +454,35 @@ VecType primecyc::RaderFFTNat<VecType>::ForwardRader(const VecType& element, con
     const auto &rootsT = m_rootTableByModulusRoot[{modulus, rootOfUnity}];
     const auto &rootsTPrecon = m_rootPreconTableByModulusRoot[{modulus, rootOfUnity}];
 
-    std::vector<IntType> temp(tot);
-    std::vector<IntType> out(tot);
+    std::vector<uint64_t> temp(tot);
+    std::vector<uint64_t> out(tot);
 
-    temp[0] = IntType(0).ModSub(element[0], modulus);
+    temp[0] = IntType(0).ModSub(element[0], modulus).ConvertToInt();
 
 #pragma GCC ivdep
     for (usint i = 1; i < tot; i++) {
-        temp[i] = temp[0] + element[i];
-        if (temp[i] >= modulus) {
-            temp[i] -= modulus;
+        temp[i] = (temp[0] + element[i]).ConvertToInt();
+        if (temp[i] >= modulus.ConvertToInt()) {
+            temp[i] -= modulus.ConvertToInt();
         }
     }
 
     auto rootOfUnityTot = rootOfUnity.ModExp(order, modulus);
 
-#pragma GCC ivdep
     for (usint i = 0; i < tot; i++) {
         out[indices[i]] = temp[i];
     }
 
-    ForwardFFTBase2n3(out, modulus, rootOfUnityTot, temp);
+    ForwardFFTBase2n3AVX(out, modulus.ConvertToInt(), rootOfUnityTot.ConvertToInt(), temp);
 
-#pragma GCC ivdep
     for (usint i = 0; i < tot; i++) {
-        temp[i].ModMulFastConstEq(rootsT[i], modulus, rootsTPrecon[i]);
+        temp[i] = Integer(temp[i]).ModMulFastConst(rootsT[i], modulus, rootsTPrecon[i]).ConvertToInt();
     }
 
-    ForwardFFTBase2n3(temp, modulus, rootOfUnityTot.ModExp(tot - 1, modulus), out);
+    ForwardFFTBase2n3AVX(temp, modulus.ConvertToInt(), rootOfUnityTot.ModExp(tot - 1, modulus).ConvertToInt(), out);
 
     const auto &forward = m_forwardPermutation[order];
-#pragma GCC ivdep
+
     for (usint i = 0; i < tot; i++) {
         if (forward[i] == 0) {
             temp[tot - 1] = out[i];
@@ -667,6 +501,8 @@ VecType primecyc::RaderFFTNat<VecType>::ForwardRader(const VecType& element, con
 
 template <typename VecType>
 VecType primecyc::RaderFFTNat<VecType>::ForwardRaderPermute(const VecType& element, const IntType& rootOfUnity) {
+    using Integer = typename VecType::Integer;
+
     usint tot = element.GetLength();
     
     auto modulus = element.GetModulus();
@@ -684,12 +520,12 @@ VecType primecyc::RaderFFTNat<VecType>::ForwardRaderPermute(const VecType& eleme
     const auto &rootsT = m_rootTableByModulusRoot[{modulus, rootOfUnity}];
     const auto &rootsTPrecon = m_rootPreconTableByModulusRoot[{modulus, rootOfUnity}];
 
-    auto temp = VecType(tot, modulus);
-    auto out = VecType(tot, modulus);
+    std::vector<uint64_t> temp(tot);
+    std::vector<uint64_t> out(tot);
 
-    out[0] = element[tot - 1];
+    out[0] = element[tot - 1].ConvertToInt();
     for (usint i = 1; i < tot; i++) {
-        out[i] = element[i - 1];
+        out[i] = element[i - 1].ConvertToInt();
     }
 
     auto rootOfUnityTot = rootOfUnity.ModExp(order, modulus);
@@ -698,13 +534,13 @@ VecType primecyc::RaderFFTNat<VecType>::ForwardRaderPermute(const VecType& eleme
         temp[indices[i]] = out[i];
     }
 
-    ForwardFFTBase2n3(temp, rootOfUnityTot, &out);
+    ForwardFFTBase2n3AVX(temp, modulus.ConvertToInt(), rootOfUnityTot.ConvertToInt(), out);
 
     for (usint i = 0; i < tot; i++) {
-        out[i].ModMulFastConstEq(rootsT[i], modulus, rootsTPrecon[i]);
+        out[i] = Integer(out[i]).ModMulFastConst(rootsT[i], modulus, rootsTPrecon[i]).ConvertToInt();
     }
 
-    ForwardFFTBase2n3(out, rootOfUnityTot.ModExp(tot - 1, modulus), &temp);
+    ForwardFFTBase2n3AVX(out, modulus.ConvertToInt(), rootOfUnityTot.ModExp(tot - 1, modulus).ConvertToInt(), temp);
 
     const auto &forward = m_forwardPermutation[order];
 
@@ -716,11 +552,18 @@ VecType primecyc::RaderFFTNat<VecType>::ForwardRaderPermute(const VecType& eleme
         }
     }
 
-    return out;
+    VecType result(tot, modulus);
+    for (usint i = 0; i < tot; i++) {
+        result[i] = temp[i];
+    }
+
+    return result;
 }
 
 template <typename VecType>
 VecType primecyc::RaderFFTNat<VecType>::InverseRader(const VecType& element, const IntType& rootOfUnity) {
+    using Integer = typename VecType::Integer;
+
     usint tot = element.GetLength();
 
     auto modulus = element.GetModulus();
@@ -740,41 +583,45 @@ VecType primecyc::RaderFFTNat<VecType>::InverseRader(const VecType& element, con
 
     const auto &forward = m_forwardPermutation[order];
 
-    auto temp = VecType(tot, modulus);
-    auto out = VecType(tot, modulus);
+    std::vector<uint64_t> temp(tot);
+    std::vector<uint64_t> out(tot);
 
     auto rootOfUnityTot = rootOfUnity.ModExp(order, modulus);
 
     for (usint i = 0; i < tot; i++) {
         if (forward[i] == 0) {
-            temp[i] = element[tot - 1];
+            temp[i] = element[tot - 1].ConvertToInt();
         } else {
-            temp[(tot - i) % tot] = element[forward[i] - 1];
+            temp[(tot - i) % tot] = element[forward[i] - 1].ConvertToInt();
         }
     }
 
-    ForwardFFTBase2n3(temp, rootOfUnityTot, &out);
+    ForwardFFTBase2n3AVX(temp, modulus.ConvertToInt(), rootOfUnityTot.ConvertToInt(), out);
 
     for (usint i = 0; i < tot; i++) {
-        out[i].ModMulFastConstEq(invRootsT[i], modulus, invRootsTPrecon[i]);
+        out[i] = Integer(out[i]).ModMulFastConstEq(invRootsT[i], modulus, invRootsTPrecon[i]).ConvertToInt();
     }
 
-    ForwardFFTBase2n3(out, rootOfUnityTot.ModExp(tot - 1, modulus), &temp);
+    ForwardFFTBase2n3AVX(out, modulus.ConvertToInt(), rootOfUnityTot.ModExp(tot - 1, modulus).ConvertToInt(), temp);
 
     for (usint i = 0; i < tot; i++) {
         out[i] = temp[indices[i]];
     }
 
-    out[0] = IntType(0).ModSubFast(out[0], modulus);
+
+    VecType result(tot, modulus);
+    result[0] = IntType(0).ModSubFast(out[0], modulus);
     for (usint i = 1; i < tot; i++) {
-        out[i] = out[0].ModAddFast(out[i], modulus);
+        result[i] = result[0].ModAddFast(out[i], modulus);
     }
 
-    return out;
+    return result;
 }
 
 template <typename VecType>
 VecType primecyc::RaderFFTNat<VecType>::InverseRaderPermute(const VecType& element, const IntType& rootOfUnity) {
+    using Integer = typename VecType::Integer;
+
     usint tot = element.GetLength();
 
     auto modulus = element.GetModulus();
@@ -792,8 +639,8 @@ VecType primecyc::RaderFFTNat<VecType>::InverseRaderPermute(const VecType& eleme
     const auto &invRootsT = m_inverseRootTableByModulusRoot[{modulus, rootOfUnity}];
     const auto &invRootsTPrecon = m_inverseRootPreconTableByModulusRoot[{modulus, rootOfUnity}];
 
-    auto temp = VecType(tot, modulus);
-    auto out = VecType(tot, modulus);
+    std::vector<uint64_t> temp(tot);
+    std::vector<uint64_t> out(tot);
 
     const auto &forward = m_forwardPermutation[order];
 
@@ -801,26 +648,27 @@ VecType primecyc::RaderFFTNat<VecType>::InverseRaderPermute(const VecType& eleme
 
     for (usint i = 0; i < tot; i++) {
         if (forward[i] == 0) {
-            temp[i] = element[tot - 1];
+            temp[i] = element[tot - 1].ConvertToInt();
         } else {
-            temp[(tot - i) % tot] = element[forward[i] - 1];
+            temp[(tot - i) % tot] = element[forward[i] - 1].ConvertToInt();
         }
     }
 
-    ForwardFFTBase2n3(temp, rootOfUnityTot, &out);
+    ForwardFFTBase2n3AVX(temp, modulus.ConvertToInt(), rootOfUnityTot.ConvertToInt(), out);
 
     for (usint i = 0; i < tot; i++) {
-        out[i].ModMulFastConstEq(invRootsT[i], modulus, invRootsTPrecon[i]);
+        out[i] = Integer(out[i]).ModMulFastConstEq(invRootsT[i], modulus, invRootsTPrecon[i]).ConvertToInt();
     }
 
-    ForwardFFTBase2n3(out, rootOfUnityTot.ModExp(tot - 1, modulus), &temp);
+    ForwardFFTBase2n3AVX(out, modulus.ConvertToInt(), rootOfUnityTot.ModExp(tot - 1, modulus).ConvertToInt(), temp);
 
+    VecType result(tot, modulus);
     for (usint i = 1; i < tot; i++) {
-        out[i - 1] = temp[indices[i]];
+        result[i - 1] = temp[indices[i]];
     }
-    out[tot - 1] = temp[indices[0]];
+    result[tot - 1] = temp[indices[0]];
 
-    return out;
+    return result;
 }
 
 #endif // PRIME_CYC_IMPL
