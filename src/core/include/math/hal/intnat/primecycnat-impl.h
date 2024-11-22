@@ -544,20 +544,17 @@ VecType primecyc::RaderFFTNat<VecType>::ForwardRaderPermute(const VecType& eleme
 
     const auto &forward = m_forwardPermutation[order];
 
+    VecType result(tot, modulus);
+
     for (usint i = 0; i < tot; i++) {
         if (forward[i] == 0) {
-            out[tot - 1] = temp[i];
+            result[tot - 1] = temp[i];
         } else {
-            out[forward[i] - 1] = temp[(tot - i) % tot];
+            result[forward[i] - 1] = temp[(tot - i) % tot];
         }
     }
 
-    VecType result(tot, modulus);
-    for (usint i = 0; i < tot; i++) {
-        result[i] = temp[i];
-    }
-
-    return result;
+    return result   ;
 }
 
 template <typename VecType>
