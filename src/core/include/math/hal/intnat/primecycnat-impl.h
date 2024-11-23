@@ -49,6 +49,12 @@ std::map<primecyc::ModulusRoot<typename VecType::Integer>, std::vector<uint64_t>
 template <typename VecType>
 std::map<usint, bool> primecyc::RaderFFTNat<VecType>::m_enabled;
 
+static inline uint64_t mulmod(uint64_t a, uint64_t b, uint64_t m, uint64_t b_inv) {
+    uint64_t q = (uint64_t)(((unsigned __int128)a * b_inv) >> 64);
+    uint64_t y = a * b - q * m;
+    return y >= m ? y - m : y;
+}
+
 template <typename VecType>
 void primecyc::RaderFFTNat<VecType>::PreComputeIsomorphism(usint cycloOrder) {
     usint g = primecycutil::findPrimitiveRoot(cycloOrder);
@@ -155,12 +161,6 @@ void primecyc::RaderFFTNat<VecType>::PreComputeBase2n3RootTable(usint order, con
     m_base2n3RootPreconTableByModulusRoot[nttModulusRoot] = rootPreconTable;
 }
 
-static inline uint64_t mulmod(uint64_t a, uint64_t b, uint64_t m, uint64_t b_inv) {
-    uint64_t q = (uint64_t)(((unsigned __int128)a * b_inv) >> 64);
-    uint64_t y = a * b - q * m;
-    return y >= m ? y - m : y;
-}
-
 template <typename VecType>
 void primecyc::RaderFFTNat<VecType>::ForwardFFTBase2n3AVX(const std::vector<uint64_t> &element, uint64_t modulus, uint64_t rootOfUnity, std::vector<uint64_t> &result) {
 
@@ -249,16 +249,16 @@ void primecyc::RaderFFTNat<VecType>::ForwardFFTBase2n3AVX(const std::vector<uint
         for (usint j = 0; j < n; j += l1) {
             usint k = 0;
             for (; k + 3 < l0; k += 4) {
+                // Set yvec = [y3, y2, y1, y0]
                 uint64_t y0 = mulmod(result[j + k + l0], rootTableAVX[k * d], Q, rootTablePreconAVX[k * d]);
                 uint64_t y1 = mulmod(result[j + k + l0 + 1], rootTableAVX[(k + 1) * d], Q, rootTablePreconAVX[(k + 1) * d]);
                 uint64_t y2 = mulmod(result[j + k + l0 + 2], rootTableAVX[(k + 2) * d], Q, rootTablePreconAVX[(k + 2) * d]);
                 uint64_t y3 = mulmod(result[j + k + l0 + 3], rootTableAVX[(k + 3) * d], Q, rootTablePreconAVX[(k + 3) * d]);
+                __m256i yvec = _mm256_set_epi64x(y3, y2, y1, y0);
 
                 // Load result[j + k] to result[j + k + 3]
                 __m256i rvec = _mm256_loadu_si256((__m256i*)&result[j + k]);
 
-                // Set yvec = [y3, y2, y1, y0]
-                __m256i yvec = _mm256_set_epi64x(y3, y2, y1, y0);
 
                 // Compute sum = rvec + yvec
                 __m256i sum = _mm256_add_epi64(rvec, yvec);
@@ -435,11 +435,11 @@ void primecyc::RaderFFTNat<VecType>::ForwardFFTBase2n3AVX(const std::vector<uint
 
 template <typename VecType>
 VecType primecyc::RaderFFTNat<VecType>::ForwardRader(const VecType& element, const IntType& rootOfUnity) {
-    using Integer = typename VecType::Integer;
 
     usint tot = element.GetLength();
     
     auto modulus = element.GetModulus();
+    uint64_t Q = modulus.ConvertToInt();
     auto order = tot + 1;
 
     if (m_forwardPermutation.find(order) == m_forwardPermutation.end()) {
@@ -476,7 +476,7 @@ VecType primecyc::RaderFFTNat<VecType>::ForwardRader(const VecType& element, con
     ForwardFFTBase2n3AVX(out, modulus.ConvertToInt(), rootOfUnityTot.ConvertToInt(), temp);
 
     for (usint i = 0; i < tot; i++) {
-        temp[i] = Integer(temp[i]).ModMulFastConst(rootsT[i], modulus, rootsTPrecon[i]).ConvertToInt();
+        temp[i] = mulmod(temp[i], rootsT[i], modulus, rootsTPrecon[i]);
     }
 
     ForwardFFTBase2n3AVX(temp, modulus.ConvertToInt(), rootOfUnityTot.ModExp(tot - 1, modulus).ConvertToInt(), out);
@@ -501,11 +501,11 @@ VecType primecyc::RaderFFTNat<VecType>::ForwardRader(const VecType& element, con
 
 template <typename VecType>
 VecType primecyc::RaderFFTNat<VecType>::ForwardRaderPermute(const VecType& element, const IntType& rootOfUnity) {
-    using Integer = typename VecType::Integer;
 
     usint tot = element.GetLength();
     
     auto modulus = element.GetModulus();
+    uint64_t Q = modulus.ConvertToInt();
     auto order = tot + 1;
 
     if (m_forwardPermutation.find(order) == m_forwardPermutation.end()) {
@@ -537,7 +537,7 @@ VecType primecyc::RaderFFTNat<VecType>::ForwardRaderPermute(const VecType& eleme
     ForwardFFTBase2n3AVX(temp, modulus.ConvertToInt(), rootOfUnityTot.ConvertToInt(), out);
 
     for (usint i = 0; i < tot; i++) {
-        out[i] = Integer(out[i]).ModMulFastConst(rootsT[i], modulus, rootsTPrecon[i]).ConvertToInt();
+        out[i] = mulmod(out[i], rootsT[i], modulus, rootsTPrecon[i]);
     }
 
     ForwardFFTBase2n3AVX(out, modulus.ConvertToInt(), rootOfUnityTot.ModExp(tot - 1, modulus).ConvertToInt(), temp);
@@ -559,11 +559,11 @@ VecType primecyc::RaderFFTNat<VecType>::ForwardRaderPermute(const VecType& eleme
 
 template <typename VecType>
 VecType primecyc::RaderFFTNat<VecType>::InverseRader(const VecType& element, const IntType& rootOfUnity) {
-    using Integer = typename VecType::Integer;
 
     usint tot = element.GetLength();
 
     auto modulus = element.GetModulus();
+    uint64_t Q = modulus.ConvertToInt();
     auto order = tot + 1;
 
     if (m_forwardPermutation.find(order) == m_forwardPermutation.end()) {
@@ -596,7 +596,7 @@ VecType primecyc::RaderFFTNat<VecType>::InverseRader(const VecType& element, con
     ForwardFFTBase2n3AVX(temp, modulus.ConvertToInt(), rootOfUnityTot.ConvertToInt(), out);
 
     for (usint i = 0; i < tot; i++) {
-        out[i] = Integer(out[i]).ModMulFastConstEq(invRootsT[i], modulus, invRootsTPrecon[i]).ConvertToInt();
+        out[i] = mulmod(out[i], invRootsT[i], Q, invRootsTPrecon[i]);
     }
 
     ForwardFFTBase2n3AVX(out, modulus.ConvertToInt(), rootOfUnityTot.ModExp(tot - 1, modulus).ConvertToInt(), temp);
@@ -617,11 +617,11 @@ VecType primecyc::RaderFFTNat<VecType>::InverseRader(const VecType& element, con
 
 template <typename VecType>
 VecType primecyc::RaderFFTNat<VecType>::InverseRaderPermute(const VecType& element, const IntType& rootOfUnity) {
-    using Integer = typename VecType::Integer;
 
     usint tot = element.GetLength();
 
     auto modulus = element.GetModulus();
+    uint64_t Q = modulus.ConvertToInt();
     auto order = tot + 1;
 
     if (m_forwardPermutation.find(order) == m_forwardPermutation.end()) {
@@ -654,7 +654,7 @@ VecType primecyc::RaderFFTNat<VecType>::InverseRaderPermute(const VecType& eleme
     ForwardFFTBase2n3AVX(temp, modulus.ConvertToInt(), rootOfUnityTot.ConvertToInt(), out);
 
     for (usint i = 0; i < tot; i++) {
-        out[i] = Integer(out[i]).ModMulFastConstEq(invRootsT[i], modulus, invRootsTPrecon[i]).ConvertToInt();
+        out[i] = mulmod(out[i], invRootsT[i], Q, invRootsTPrecon[i]);
     }
 
     ForwardFFTBase2n3AVX(out, modulus.ConvertToInt(), rootOfUnityTot.ModExp(tot - 1, modulus).ConvertToInt(), temp);
